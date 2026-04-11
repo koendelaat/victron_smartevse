@@ -186,6 +186,7 @@ func (ev *SmartEVSE) mqtt_received(topic string, value string) {
 		return
 	}
 	update_state := false
+
 	// string values
 	switch sub {
 	case "connected":
@@ -228,7 +229,7 @@ func (ev *SmartEVSE) mqtt_received(topic string, value string) {
 			}
 			if ev.mode == "Off" {
 				ev.victron_ev.ChangeMode(victron.EV_Mode_Manual)
-			} else if ev.state == "Smart" {
+			} else if ev.mode == "Smart" {
 				ev.victron_ev.ChangeMode(victron.EV_Mode_Automatic)
 			} else {
 				ev.victron_ev.ChangeMode(victron.EV_Mode_Scheduled)
@@ -285,6 +286,8 @@ func (evse *SmartEVSE) mode_changed_callback(mode victron.EV_Mode) {
 
 func (ev *EvHandler) Write_MainsMeter() {
 	l1, l2, l3 := ev.victron.Grid()
+	log.Printf("Grid L1:%f L2:%f L3:%f", l1, l2, l3)
+	l1, l2, l3 = 1, 2, 3
 
 	payload := fmt.Sprintf("%d:%d:%d", int32(math.RoundToEven(l1*10)), int32(math.RoundToEven(l2*10)), int32(math.RoundToEven(l3*10)))
 	for _, smartevse := range ev.evs {
@@ -295,6 +298,8 @@ func (ev *EvHandler) Write_MainsMeter() {
 
 func (ev *EvHandler) Write_HomeBattery() {
 	battery := ev.victron.BatteryCurrent()
+	log.Printf("Battery current:%f", battery)
+
 	payload := fmt.Sprintf("%d", int32(math.RoundToEven(battery*10)))
 	for _, smartevse := range ev.evs {
 		topic := fmt.Sprintf("%s/Set/HomeBatteryCurrent", smartevse.Prefix)

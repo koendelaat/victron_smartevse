@@ -13,8 +13,8 @@ type ManualBusItem struct {
 	text  string
 }
 
-func NewManualBusItem(value any, text string) ManualBusItem {
-	return ManualBusItem{
+func NewManualBusItem(value any, text string) *ManualBusItem {
+	return &ManualBusItem{
 		value: value,
 		text:  text,
 	}

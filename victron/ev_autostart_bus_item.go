@@ -23,6 +23,7 @@ var ev_autostart = map[EV_AutoStart]string{
 type EvAutoStartBusItem struct {
 	bus_item_impl
 	autostart EV_AutoStart
+	callback  func(mode EV_AutoStart)
 }
 
 func NewEvAutoStartBusItem(autostart EV_AutoStart) EvAutoStartBusItem {
@@ -47,6 +48,9 @@ func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	}
 
 	f.autostart = new_autostart
+	if f.callback != nil {
+		f.callback(new_autostart)
+	}
 	return 0, nil
 }
 

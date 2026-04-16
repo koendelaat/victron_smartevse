@@ -43,6 +43,8 @@ type SmartEVSE struct {
 	mode        string
 	evplugstate string
 	state       string
+	autoIdtag   string
+	access      string
 }
 
 var cfg_smartevse_ips = util.GetEnv("SMARTEVSE_IPS", "")
@@ -63,7 +65,7 @@ func NewEvHandler(mqtt *mqtthelper.Mqtt_Helper) (*EvHandler, error) {
 	}
 
 	for _, ev := range handler.evs {
-		err = ev.load_info()
+		err = ev.loadInfo()
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +128,7 @@ func (handler *EvHandler) findSmartEVSEs() error {
 	return nil
 }
 
-func (ev *SmartEVSE) load_info() error {
+func (ev *SmartEVSE) loadInfo() error {
 	raw, err := web.settings(ev.IP)
 	if err != nil {
 		return err
@@ -144,22 +146,26 @@ func (ev *SmartEVSE) load_info() error {
 	ev.current_min = raw.Settings.Current_Min
 	ev.current = raw.Settings.Charge_Current / 10
 	ev.current_max = raw.Settings.Current_Max
+	if raw.Ocpp != nil && raw.Ocpp.AutoAuthIdtag != "" {
+		ev.autoIdtag = raw.Ocpp.AutoAuthIdtag
+		log.Printf("RFID tag configured: %s", ev.autoIdtag)
+	}
 	return nil
 }
 
 func (ev *SmartEVSE) subscribe(mqtt *mqtthelper.Mqtt_Helper) {
 	topic := fmt.Sprintf("%s/#", ev.Prefix)
-	mqtt.AddStringSubscriptionFull(topic, ev.mqtt_received)
+	mqtt.AddStringSubscriptionFull(topic, ev.mqttReceived)
 }
 
-func (ev *SmartEVSE) find_sub(topic string) string {
+func (ev *SmartEVSE) findSub(topic string) string {
 	if len(topic) < len(ev.Prefix)+2 {
 		return topic
 	}
 	return topic[len(ev.Prefix)+1:]
 }
 
-var float_subtopics = []string{
+var floatSubtopics = []string{
 	"EVCurrentL1",
 	"EVCurrentL2",
 	"EVCurrentL3",
@@ -170,22 +176,18 @@ var float_subtopics = []string{
 	"EVTotalEnergyCharged",
 	"ESPTemp",
 }
-var test bool = false
 
-func (ev *SmartEVSE) mqtt_received(topic string, value string) {
-	if test {
-		return
-	}
+func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 	if ev.victron_ev == nil {
 		log.Printf("No victron_ev yet, dropping topic:%s payload:%s", topic, value)
 		return
 	}
-	sub := ev.find_sub(topic)
+	sub := ev.findSub(topic)
 	if sub == topic {
 		log.Printf("invalid topic %s", topic)
 		return
 	}
-	update_state := false
+	updateState := false
 
 	// string values
 	switch sub {
@@ -193,18 +195,19 @@ func (ev *SmartEVSE) mqtt_received(topic string, value string) {
 		ev.victron_ev.ChangeConnected(value == "online")
 		return
 	case "Access":
+		ev.access = value
 	case "State":
 		ev.state = value
-		update_state = true
+		updateState = true
 	case "EVPlugState":
 		ev.evplugstate = value
-		update_state = true
+		updateState = true
 	case "Error":
 	case "Mode":
 		ev.mode = value
-		update_state = true
+		updateState = true
 	}
-	if update_state {
+	if updateState {
 		if ev.evplugstate == "Disconnected" {
 			ev.victron_ev.ChangeStatus(victron.EV_Status_Disconnected)
 		} else {
@@ -238,7 +241,7 @@ func (ev *SmartEVSE) mqtt_received(topic string, value string) {
 		return
 	}
 
-	if !slices.Contains(float_subtopics, sub) {
+	if !slices.Contains(floatSubtopics, sub) {
 		return
 	}
 	// float values
@@ -269,7 +272,7 @@ func (ev *SmartEVSE) mqtt_received(topic string, value string) {
 	}
 }
 
-func (evse *SmartEVSE) mode_changed_callback(mode victron.EV_Mode) {
+func (evse *SmartEVSE) modeChangedCallback(mode victron.EV_Mode) {
 	log.Printf("Request to change mode to: %d", mode)
 	topic := fmt.Sprintf("%s/Set/Mode", evse.Prefix)
 	switch mode {
@@ -284,10 +287,46 @@ func (evse *SmartEVSE) mode_changed_callback(mode victron.EV_Mode) {
 	}
 }
 
-func (ev *EvHandler) Write_MainsMeter() {
+func (evse *SmartEVSE) setOverrideCurrentChangedCallback(value, _, max float64) {
+	if value == max {
+		value = 0 // 0 means no override, so if the value is the same as max, we can set it to 0 to disable the override
+	}
+	log.Printf("Request to change override current to: %f", value)
+	topic := fmt.Sprintf("%s/Set/CurrentOverride", evse.Prefix)
+	payload := fmt.Sprintf("%d", int32(math.RoundToEven(value*10)))
+	evse.mqtt.PublishFullTopic(topic, payload)
+}
+
+func (evse *SmartEVSE) startStopChangedCallback(mode victron.EV_StartStop) {
+	log.Printf("Request to change start/stop to: %d", mode)
+	if evse.autoIdtag == "" {
+		log.Printf("No RFID configured, can't start/stop")
+		return
+	}
+	if (evse.access == "Deny" && mode == victron.EV_StartStop_Start) ||
+		(evse.access == "Allow" && mode == victron.EV_StartStop_Stop) {
+		topic := fmt.Sprintf("%s/Set/RFID", evse.Prefix)
+		payload := evse.autoIdtag
+		evse.mqtt.PublishFullTopic(topic, payload)
+	}
+}
+
+func (evse *SmartEVSE) autoStartChangedCallback(mode victron.EV_AutoStart) {
+	log.Printf("Request to change autostart to: %d", mode)
+	if evse.autoIdtag == "" {
+		log.Printf("No RFID configured, can't start/stop")
+	}
+	settings, _ := web.settings(evse.IP)
+	if settings.Ocpp != nil {
+		if settings.Ocpp.AutoAuth == fmt.Sprintf("%d", mode) {
+		}
+	}
+
+}
+
+func (ev *EvHandler) WriteMainsmeter() {
 	l1, l2, l3 := ev.victron.Grid()
-	log.Printf("Grid L1:%f L2:%f L3:%f", l1, l2, l3)
-	l1, l2, l3 = 1, 2, 3
+	//log.Printf("Grid L1:%f L2:%f L3:%f", l1, l2, l3)
 
 	payload := fmt.Sprintf("%d:%d:%d", int32(math.RoundToEven(l1*10)), int32(math.RoundToEven(l2*10)), int32(math.RoundToEven(l3*10)))
 	for _, smartevse := range ev.evs {
@@ -296,9 +335,9 @@ func (ev *EvHandler) Write_MainsMeter() {
 	}
 }
 
-func (ev *EvHandler) Write_HomeBattery() {
+func (ev *EvHandler) WriteHomebattery() {
 	battery := ev.victron.BatteryCurrent()
-	log.Printf("Battery current:%f", battery)
+	//log.Printf("Battery current:%f", battery)
 
 	payload := fmt.Sprintf("%d", int32(math.RoundToEven(battery*10)))
 	for _, smartevse := range ev.evs {

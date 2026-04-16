@@ -71,6 +71,7 @@ type Victron_EV_Charger struct {
 	parent           *VictronHandler
 	service          *Service
 	running          bool
+	constant_paths   map[string]BusItem
 	modifyable_items map[string]BusItem
 
 	connected ManualBusItem
@@ -86,12 +87,14 @@ type Victron_EV_Charger struct {
 
 	energy_charged UnitBusItem
 	total_charged  UnitBusItem
+	time_charged   AnyBusItem
 
 	temperature UnitBusItem
 
 	status    EvStatusBusItem
 	mode      EvModeBusItem
 	autostart EvAutoStartBusItem
+	startStop EvStartStopBusItem
 }
 
 func (handler *VictronHandler) CreateEvChanger(serial int, version, connection string, min, current, max float64, charged float64, total float64) (*Victron_EV_Charger, error) {
@@ -100,7 +103,7 @@ func (handler *VictronHandler) CreateEvChanger(serial int, version, connection s
 	ev := Victron_EV_Charger{
 		parent: handler,
 
-		connected: NewManualBusItem(1, "Connected"),
+		connected: *NewManualBusItem(1, "Connected"),
 
 		power:    NewUnitFormatterObject(0, "W", 1),
 		power_l1: NewUnitFormatterObject(0, "W", 1),
@@ -112,13 +115,16 @@ func (handler *VictronHandler) CreateEvChanger(serial int, version, connection s
 		max_current:    NewMinMaxUnitBusItem(max, min, max, "A", 0),
 		energy_charged: NewUnitFormatterObject(charged, "kWh", 3),
 		total_charged:  NewUnitFormatterObject(total, "kWh", 3),
+		time_charged:   *NewAnyBusItem(0),
 
 		temperature: NewUnitFormatterObject(20, "C", 0),
 
 		status:    NewEvStatusBusItem(EV_Status_Disconnected),
 		mode:      NewEvModeBusItem(EV_Mode_Scheduled),
 		autostart: NewEvAutoStartBusItem(EV_AutoStart_Enabled),
+		startStop: NewEvStartStopBusItem(EV_StartStop_Stop),
 	}
+	//ev.energy_charged.useVariant = true
 
 	deviceName := fmt.Sprintf("SmartEVSE-%d", serial)
 	serviceName := "com.victronenergy.evcharger." + deviceName
@@ -135,26 +141,27 @@ func (handler *VictronHandler) CreateEvChanger(serial int, version, connection s
 		return ev.return_and_close(fmt.Errorf("failed to get device instance: %w", err))
 	}
 
-	constant_paths := map[string]BusItem{
-		"/ProductName":          NewAnyBusItem("SmartEVSE"),
-		"/CustomName":           NewAnyBusItem(deviceName),
-		"/DeviceName":           NewAnyBusItem(deviceName),
-		"/Mgmt/Connection":      NewAnyBusItem(deviceName),
-		"/Mgmt/ProcessName":     NewAnyBusItem(os.Args[0]),
-		"/Mgmt/ProcessVersion":  NewAnyBusItem(global.Version),
-		"/DeviceInstance":       NewAnyBusItem(deviceInstance),
-		"/Model":                NewAnyBusItem("SmartEVSE v3"),
-		"/ProductId":            NewAnyBusItem(65535),
-		"/Serial":               NewAnyBusItem(serial),
-		"/HardwareVersion":      NewAnyBusItem(3),
-		"/FirmwareVersion":      NewAnyBusItem(version),
-		"/Position":             NewAnyBusItem(0),
-		"/Connected":            NewAnyBusItem(1),
+	ev.constant_paths = map[string]BusItem{
+		"/ProductName":         NewAnyBusItem("SmartEVSE"),
+		"/CustomName":          NewAnyBusItem(deviceName),
+		"/DeviceName":          NewAnyBusItem(deviceName),
+		"/Mgmt/Connection":     NewAnyBusItem(deviceName),
+		"/Mgmt/ProcessName":    NewAnyBusItem(os.Args[0]),
+		"/Mgmt/ProcessVersion": NewAnyBusItem(global.Version),
+		"/DeviceInstance":      NewAnyBusItem(deviceInstance),
+		"/Model":               NewAnyBusItem("SmartEVSE v3"),
+		"/ProductId":           NewAnyBusItem(65535),
+		"/Serial":              NewAnyBusItem(serial),
+		"/HardwareVersion":     NewAnyBusItem(3),
+		"/FirmwareVersion":     NewAnyBusItem(version),
+		"/Position":            NewVariantBusItem(0),
+		//"/Position":             NewManualBusItem(0, "AC Output"),
+		"/PositionIsAdjustable": NewAnyBusItem(0),
 		"/IsGenericEnergyMeter": NewAnyBusItem(0),
 		"/EnableDisplay":        NewAnyBusItem(1),
 	}
 
-	for path, value := range constant_paths {
+	for path, value := range ev.constant_paths {
 		if err := ev.service.AddPath(path, value); err != nil {
 			return ev.return_and_close(fmt.Errorf("failed to add path %s: %w", path, err))
 		}
@@ -171,9 +178,11 @@ func (handler *VictronHandler) CreateEvChanger(serial int, version, connection s
 		"/SetCurrent":        &ev.set_current,
 		"/MaxCurrent":        &ev.max_current,
 		"/Session/Energy":    &ev.energy_charged,
+		"/Session/Time":      &ev.time_charged,
 		"/Ac/Energy/Forward": &ev.total_charged,
 		"/MCU/Temperature":   &ev.temperature,
 		"/AutoStart":         &ev.autostart,
+		"/StartStop":         &ev.startStop,
 		"/Mode":              &ev.mode,
 	}
 
@@ -190,9 +199,18 @@ func (handler *VictronHandler) CreateEvChanger(serial int, version, connection s
 
 	go func() {
 		ev.running = true
+		ticker := time.NewTicker(5 * time.Second)
+		constantTicker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		defer constantTicker.Stop()
+
 		for ev.running {
-			<-time.After(5 * time.Second)
-			ev.PublishUpdates()
+			select {
+			case <-ticker.C:
+				ev.PublishUpdates()
+				//case <-constantTicker.C:
+				//	ev.PublishConstants()
+			}
 		}
 	}()
 
@@ -212,8 +230,24 @@ func (ev *Victron_EV_Charger) SetModeChangedCallback(callback func(mode EV_Mode)
 	ev.mode.callback = callback
 }
 
+func (ev *Victron_EV_Charger) SetOverrideCurrentChangedCallback(callback func(overrideCurrent, min, max float64)) {
+	ev.set_current.callback = callback
+}
+
+func (ev *Victron_EV_Charger) SetStartStopChangedCallback(callback func(mode EV_StartStop)) {
+	ev.startStop.callback = callback
+}
+
+func (ev *Victron_EV_Charger) SetAutoStartChangedCallback(callback func(mode EV_AutoStart)) {
+	ev.autostart.callback = callback
+}
+
 func (ev *Victron_EV_Charger) PublishUpdates() {
 	ev.service.emitItemsChanged(ev.modifyable_items)
+}
+
+func (ev *Victron_EV_Charger) PublishConstants() {
+	ev.service.emitItemsChanged(ev.constant_paths)
 }
 
 func (ev *Victron_EV_Charger) ChangeConnected(connected bool) {
@@ -272,14 +306,14 @@ func (ev *Victron_EV_Charger) ChangeStatus(status EV_Status) {
 
 func (ev *Victron_EV_Charger) ChangeMode(mode EV_Mode) {
 	ev.mode.change(mode)
-	if mode == EV_Mode_Automatic {
-		ev.autostart.change(EV_AutoStart_Enabled)
-	} else {
-		ev.autostart.change(EV_AutoStart_Disabled)
-	}
+	//if mode == EV_Mode_Automatic {
+	//	ev.autostart.change(EV_AutoStart_Enabled)
+	//} else {
+	//	ev.autostart.change(EV_AutoStart_Disabled)
+	//}
 }
 
-func (ev *Victron_EV_Charger) Set_Current(min, value, max float64) {
+func (ev *Victron_EV_Charger) SetCurrent(min, value, max float64) {
 	ev.set_current.min = min
 	ev.set_current.value = value
 	ev.set_current.max = max

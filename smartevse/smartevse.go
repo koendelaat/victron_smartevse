@@ -60,10 +60,6 @@ func NewEvHandler(mqtt *mqtthelper.Mqtt_Helper) (*EvHandler, error) {
 		return nil, err
 	}
 
-	if len(handler.evs) > 1 {
-		return nil, fmt.Errorf("Only capable to handle 1 smartevse, got %d", len(handler.evs))
-	}
-
 	for _, ev := range handler.evs {
 		err = ev.loadInfo()
 		if err != nil {
@@ -72,12 +68,29 @@ func NewEvHandler(mqtt *mqtthelper.Mqtt_Helper) (*EvHandler, error) {
 		log.Printf("loaded: %s %d - %s", ev.Name, ev.SerialNr, ev.Prefix)
 	}
 
+	handler.evs = dedupeBySerial(handler.evs)
+
 	for _, ev := range handler.evs {
-		log.Printf("loaded: %s %d - %s", ev.Name, ev.SerialNr, ev.Prefix)
 		ev.subscribe(mqtt)
 	}
 
 	return &handler, nil
+}
+
+func dedupeBySerial(evs []*SmartEVSE) []*SmartEVSE {
+	seen := map[int]string{}
+	result := make([]*SmartEVSE, 0, len(evs))
+
+	for _, ev := range evs {
+		if prevIP, exists := seen[ev.SerialNr]; exists {
+			log.Printf("Duplicate SmartEVSE serial %d detected (%s and %s); keeping the first entry", ev.SerialNr, prevIP, ev.IP)
+			continue
+		}
+		seen[ev.SerialNr] = ev.IP
+		result = append(result, ev)
+	}
+
+	return result
 }
 
 func (handler *EvHandler) Close() error {

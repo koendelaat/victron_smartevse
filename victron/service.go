@@ -68,6 +68,9 @@ func (s *Service) Close() error {
 }
 
 func (s *Service) GetOrCreateDeviceInstance() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.deviceInstance != -1 {
 		return s.deviceInstance, nil
 	}
@@ -119,6 +122,8 @@ func (s *Service) GetOrCreateDeviceInstance() (int, error) {
 	if err != nil {
 		return -1, fmt.Errorf("failed to get device instance: %w", err)
 	}
+
+	s.deviceInstance = deviceInstance
 
 	return deviceInstance, nil
 }

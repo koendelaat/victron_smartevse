@@ -9,7 +9,7 @@ This driver creates a Victron EV Charger service and bridges data between SmartE
 ## ⚠️ Disclaimer
 
 - Not an official Victron or SmartEVSE integration
-- Tested with single SmartEVSE only
+- Tested with SmartEVSE chargers on one GX system
 - Contains hardcoded assumptions (see section below)
 
 ---
@@ -241,8 +241,8 @@ http://<smartevse-ip>/settings
 
 ## Assumptions & Limitations
 
-- Only **1 SmartEVSE supported**
-- Device instance hardcoded to `1`
+- Multiple SmartEVSE chargers supported (one D-Bus service per serial)
+- Device instance allocated via `com.victronenergy.settings` (`ClassAndVrmInstance`)
 - D-Bus sender hardcoded (`com.victronenergy.vebus.ttyS4`)
 - MQTT topic prefix taken from SmartEVSE config
 - Session time not implemented

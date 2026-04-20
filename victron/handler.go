@@ -9,7 +9,7 @@ import (
 )
 
 type VictronHandler struct {
-	dbusconn     *dbus.Conn
+	dbusconn     DBusConn
 	stop_channel chan struct{}
 	services     []*Service
 
@@ -33,18 +33,20 @@ type VictronHandler struct {
 }
 
 func NewVictronHandler() (*VictronHandler, error) {
-	var err error
-	handler := VictronHandler{
-		stop_channel: make(chan struct{}),
-		services:     []*Service{},
-	}
-
-	handler.dbusconn, err = dbus.ConnectSystemBus()
+	conn, err := dbus.ConnectSystemBus()
 	if err != nil {
 		return nil, err
 	}
+	return NewVictronHandlerWithConn(conn), nil
+}
 
-	return &handler, err
+func NewVictronHandlerWithConn(conn DBusConn) *VictronHandler {
+	handler := VictronHandler{
+		dbusconn:     conn,
+		stop_channel: make(chan struct{}),
+		services:     []*Service{},
+	}
+	return &handler
 }
 
 func (handler *VictronHandler) Close() error {
@@ -135,6 +137,12 @@ func (h *VictronHandler) Grid() (float64, float64, float64) {
 
 func (h *VictronHandler) Consumption() (float64, float64, float64) {
 	return h.consumption_l1_i.lastValue, h.consumption_l2_i.lastValue, h.consumption_l3_i.lastValue
+}
+
+func (h *VictronHandler) SetConsumptionVoltages(l1, l2, l3 float64) {
+	h.consumption_l1_v.lastValue = l1
+	h.consumption_l2_v.lastValue = l2
+	h.consumption_l3_v.lastValue = l3
 }
 
 func (h *VictronHandler) BatteryCurrent() float64 {

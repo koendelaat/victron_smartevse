@@ -103,11 +103,9 @@ type Victron_EV_Charger struct {
 	position  EvPositionBusItem // /Position
 }
 
-func (handler *VictronHandler) CreateEvCharger(serial int, version, connection string, min, current, max float64, charged float64, total float64) (*Victron_EV_Charger, error) {
-	var err error
-
-	ev := Victron_EV_Charger{
-		parent: handler,
+func newEvChargerFields(parent *VictronHandler, min, current, max, charged, total float64) Victron_EV_Charger {
+	return Victron_EV_Charger{
+		parent: parent,
 
 		connected: *NewManualBusItem(int32(0), "Disconnected"),
 
@@ -134,6 +132,37 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 		startStop: NewEvStartStopBusItem(EV_StartStop_Stop),
 		position:  NewEvPositionBusItem(EV_Position_AC_Output),
 	}
+}
+
+func (ev *Victron_EV_Charger) initModifyableItems() {
+	ev.modifyable_items = map[string]BusItem{
+		"/Connected":         &ev.connected,
+		"/Status":            &ev.status,
+		"/Ac/Power":          &ev.power,
+		"/Ac/L1/Power":       &ev.power_l1,
+		"/Ac/L2/Power":       &ev.power_l2,
+		"/Ac/L3/Power":       &ev.power_l3,
+		"/Current":           &ev.current,
+		"/SetCurrent":        &ev.set_current,
+		"/MaxCurrent":        &ev.max_current,
+		"/MinCurrent":        &ev.min_current,
+		"/Ac/Energy/Forward": &ev.energy_forward,
+		"/Session/Energy":    &ev.session_energy,
+		"/Session/Time":      &ev.session_time,
+		"/ChargingTime":      &ev.charging_time,
+		"/Session/Cost":      &ev.session_cost,
+		"/MCU/Temperature":   &ev.temperature,
+		"/AutoStart":         &ev.autostart,
+		"/StartStop":         &ev.startStop,
+		"/Mode":              &ev.mode,
+		"/Position":          &ev.position,
+	}
+}
+
+func (handler *VictronHandler) CreateEvCharger(serial int, version, connection string, min, current, max float64, charged float64, total float64) (*Victron_EV_Charger, error) {
+	var err error
+
+	ev := newEvChargerFields(handler, min, current, max, charged, total)
 
 	deviceName := fmt.Sprintf("SmartEVSE-%d", serial)
 	serviceName := "com.victronenergy.evcharger." + deviceName
@@ -160,7 +189,7 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 		"/Mgmt/ProcessVersion":  NewAnyBusItem(global.Version),
 		"/DeviceInstance":       NewAnyBusItem(int32(deviceInstance)),
 		"/Model":                NewAnyBusItem("SmartEVSE v3"),
-		"/ProductId":            NewAnyBusItem(int32(0xFFFF)), // 0xFFFF = generic/unknown product ID
+		"/ProductId":            NewAnyBusItem(int32(0xFFFF)),
 		"/Serial":               NewAnyBusItem(fmt.Sprintf("%d", serial)),
 		"/HardwareVersion":      NewAnyBusItem(int32(3)),
 		"/FirmwareVersion":      NewAnyBusItem(version),
@@ -176,28 +205,9 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 		}
 	}
 
-	ev.modifyable_items = map[string]BusItem{
-		"/Connected":         &ev.connected,
-		"/Status":            &ev.status,
-		"/Ac/Power":          &ev.power,
-		"/Ac/L1/Power":       &ev.power_l1,
-		"/Ac/L2/Power":       &ev.power_l2,
-		"/Ac/L3/Power":       &ev.power_l3,
-		"/Current":           &ev.current,
-		"/SetCurrent":        &ev.set_current,
-		"/MaxCurrent":        &ev.max_current,
-		"/MinCurrent":        &ev.min_current,
-		"/Ac/Energy/Forward": &ev.energy_forward,
-		"/Session/Energy":    &ev.session_energy,
-		"/Session/Time":      &ev.session_time,
-		"/ChargingTime":      &ev.charging_time,
-		"/Session/Cost":      &ev.session_cost,
-		"/MCU/Temperature":   &ev.temperature,
-		"/AutoStart":         &ev.autostart,
-		"/StartStop":         &ev.startStop,
-		"/Mode":              &ev.mode,
-		"/Position":          &ev.position,
-	}
+	// Must be called after the struct is in its final heap location so that
+	// all pointers in the map reference fields of this ev, not a copy.
+	ev.initModifyableItems()
 
 	for path, value := range ev.modifyable_items {
 		if err := ev.service.AddPath(path, value); err != nil {
@@ -223,7 +233,6 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 		}
 	}()
 
-	// no error
 	return &ev, nil
 }
 

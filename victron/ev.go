@@ -152,7 +152,9 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 
 	ev.constant_paths = map[string]BusItem{
 		"/ProductName":          NewAnyBusItem("SmartEVSE"),
+		"/DeviceName":           NewAnyBusItem(deviceName),
 		"/CustomName":           NewAnyBusItem(deviceName),
+		"/AllowedRoles":         NewAnyBusItem([]string{"evcharger"}),
 		"/Mgmt/Connection":      NewAnyBusItem(connection),
 		"/Mgmt/ProcessName":     NewAnyBusItem(os.Args[0]),
 		"/Mgmt/ProcessVersion":  NewAnyBusItem(global.Version),
@@ -223,11 +225,6 @@ func (handler *VictronHandler) CreateEvCharger(serial int, version, connection s
 
 	// no error
 	return &ev, nil
-}
-
-// CreateEvChanger is a deprecated alias for CreateEvCharger kept for compatibility.
-func (handler *VictronHandler) CreateEvChanger(serial int, version, connection string, min, current, max float64, charged float64, total float64) (*Victron_EV_Charger, error) {
-	return handler.CreateEvCharger(serial, version, connection, min, current, max, charged, total)
 }
 
 func (ev *Victron_EV_Charger) return_and_close(err error) (*Victron_EV_Charger, error) {

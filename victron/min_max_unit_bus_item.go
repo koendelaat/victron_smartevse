@@ -58,16 +58,16 @@ func (f *MinMaxUnitBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *MinMaxUnitBusItem) GetValue() (any, *dbus.Error) {
-	return f.value, nil
+func (f *MinMaxUnitBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(f.value), nil
 }
 
-func (f *MinMaxUnitBusItem) GetMin() (any, *dbus.Error) {
-	return f.min, nil
+func (f *MinMaxUnitBusItem) GetMin() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(f.min), nil
 }
 
-func (f *MinMaxUnitBusItem) GetMax() (any, *dbus.Error) {
-	return f.max, nil
+func (f *MinMaxUnitBusItem) GetMax() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(f.max), nil
 }
 
 func (f *MinMaxUnitBusItem) GetText() (string, *dbus.Error) {

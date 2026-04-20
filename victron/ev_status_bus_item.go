@@ -96,8 +96,8 @@ func (f *EvStatusBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *EvStatusBusItem) GetValue() (any, *dbus.Error) {
-	return int32(f.status), nil
+func (f *EvStatusBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(int32(f.status)), nil
 }
 
 func (f *EvStatusBusItem) GetText() (string, *dbus.Error) {

@@ -10,19 +10,17 @@ import (
 
 type UnitBusItem struct {
 	bus_item_impl
-	unit       string
-	value      float64
-	presision  int
-	callback   func(value float64)
-	useVariant bool
+	unit      string
+	value     float64
+	presision int
+	callback  func(value float64)
 }
 
 func NewUnitFormatterObject(value float64, unit string, presision int) UnitBusItem {
 	return UnitBusItem{
-		unit:       unit,
-		value:      value,
-		presision:  presision,
-		useVariant: false,
+		unit:      unit,
+		value:     value,
+		presision: presision,
 	}
 }
 
@@ -40,11 +38,8 @@ func (f *UnitBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *UnitBusItem) GetValue() (any, *dbus.Error) {
-	if f.useVariant {
-		return dbus.MakeVariant(f.value), nil
-	}
-	return f.value, nil
+func (f *UnitBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(f.value), nil
 }
 
 func (f *UnitBusItem) GetText() (string, *dbus.Error) {

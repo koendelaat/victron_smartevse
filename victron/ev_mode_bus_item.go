@@ -14,9 +14,6 @@ const (
 	EV_Mode_Manual    = EV_Mode(0)
 	EV_Mode_Auto      = EV_Mode(1)
 	EV_Mode_Scheduled = EV_Mode(2)
-
-	// EV_Mode_Automatic is an alias for EV_Mode_Auto kept for compatibility.
-	EV_Mode_Automatic = EV_Mode_Auto
 )
 
 // ev_mode maps the three valid modes. Note: dbus_modbustcp/attributes.csv only
@@ -64,8 +61,8 @@ func (f *EvModeBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *EvModeBusItem) GetValue() (any, *dbus.Error) {
-	return int32(f.mode), nil
+func (f *EvModeBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(int32(f.mode)), nil
 }
 
 func (f *EvModeBusItem) GetText() (string, *dbus.Error) {

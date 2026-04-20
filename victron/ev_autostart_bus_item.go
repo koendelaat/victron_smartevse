@@ -54,8 +54,8 @@ func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *EvAutoStartBusItem) GetValue() (any, *dbus.Error) {
-	return int32(f.autostart), nil
+func (f *EvAutoStartBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(int32(f.autostart)), nil
 }
 
 func (f *EvAutoStartBusItem) GetText() (string, *dbus.Error) {

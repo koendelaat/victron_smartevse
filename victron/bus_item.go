@@ -9,7 +9,7 @@ import (
 type BusItem interface {
 	getObjectPath() dbus.ObjectPath
 	setObjectPath(object_path dbus.ObjectPath)
-	GetValue() (any, *dbus.Error)
+	GetValue() (dbus.Variant, *dbus.Error)
 	GetText() (string, *dbus.Error)
 	SetValue(value dbus.Variant) (int, *dbus.Error)
 }

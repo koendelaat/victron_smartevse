@@ -28,8 +28,8 @@ func (f *ManualBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	)
 }
 
-func (f *ManualBusItem) GetValue() (any, *dbus.Error) {
-	return f.value, nil
+func (f *ManualBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(f.value), nil
 }
 
 func (f *ManualBusItem) GetText() (string, *dbus.Error) {

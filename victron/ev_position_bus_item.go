@@ -50,7 +50,9 @@ func (f *EvPositionBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	return 0, nil
 }
 
-func (f *EvPositionBusItem) GetValue() (any, *dbus.Error) { return int32(f.position), nil }
+func (f *EvPositionBusItem) GetValue() (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(int32(f.position)), nil
+}
 func (f *EvPositionBusItem) GetText() (string, *dbus.Error) {
 	return ev_position_text[f.position], nil
 }

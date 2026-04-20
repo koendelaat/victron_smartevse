@@ -192,7 +192,7 @@ func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 	// string values
 	switch sub {
 	case "connected":
-		ev.victron_ev.ChangeConnected(value == "online")
+		ev.victron_ev.SetConnected(value == "online")
 		return
 	case "Access":
 		ev.access = value
@@ -209,33 +209,33 @@ func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 	}
 	if updateState {
 		if ev.evplugstate == "Disconnected" {
-			ev.victron_ev.ChangeStatus(victron.EV_Status_Disconnected)
+			ev.victron_ev.SetStatus(victron.EV_Status_Disconnected)
 		} else {
 			switch ev.state {
 			case "Charging":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Charging)
+				ev.victron_ev.SetStatus(victron.EV_Status_Charging)
 			case "Charging Stopped":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Connected)
+				ev.victron_ev.SetStatus(victron.EV_Status_Connected)
 			case "Connected to EV":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Connected)
+				ev.victron_ev.SetStatus(victron.EV_Status_Connected)
 			case "Ready to Charge":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Waiting_for_start)
+				ev.victron_ev.SetStatus(victron.EV_Status_Waiting_for_start)
 			case "Solar":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Waiting_for_sun)
+				ev.victron_ev.SetStatus(victron.EV_Status_Waiting_for_sun)
 			case "Smart":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Charging)
+				ev.victron_ev.SetStatus(victron.EV_Status_Charging)
 			case "Stop Charging":
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Connected)
+				ev.victron_ev.SetStatus(victron.EV_Status_Connected)
 			default:
 				log.Printf("Unmapped status. state:[%s] evplugstate:[%s] mode:[%s]", ev.state, ev.evplugstate, ev.mode)
-				ev.victron_ev.ChangeStatus(victron.EV_Status_Connected)
+				ev.victron_ev.SetStatus(victron.EV_Status_Connected)
 			}
 			if ev.mode == "Off" {
-				ev.victron_ev.ChangeMode(victron.EV_Mode_Manual)
+				ev.victron_ev.SetMode(victron.EV_Mode_Manual)
 			} else if ev.mode == "Smart" {
-				ev.victron_ev.ChangeMode(victron.EV_Mode_Automatic)
+				ev.victron_ev.SetMode(victron.EV_Mode_Auto)
 			} else {
-				ev.victron_ev.ChangeMode(victron.EV_Mode_Scheduled)
+				ev.victron_ev.SetMode(victron.EV_Mode_Scheduled)
 			}
 		}
 		return
@@ -258,17 +258,17 @@ func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 	case "EVCurrentL3":
 		ev.victron_ev.ChangeCurrentL3(i / 10)
 	case "MaxCurrent":
-		ev.victron_ev.ChangeMaxCurrent(i / 10)
+		ev.victron_ev.SetMaxCurrent(i / 10)
 	case "ChargeCurrent":
-		ev.victron_ev.ChangeChargeCurrent(i / 10)
+		ev.victron_ev.SetChargeCurrent(i / 10)
 	case "EVChargePower":
-		ev.victron_ev.ChangeChargePower(i)
+		ev.victron_ev.SetAcPower(i)
 	case "EVEnergyCharged":
-		ev.victron_ev.EnergyCharged(i / 1000)
+		ev.victron_ev.SetSessionEnergy(i / 1000)
 	case "EVTotalEnergyCharged":
-		ev.victron_ev.TotalCharged(i / 1000)
+		ev.victron_ev.SetTotalEnergy(i / 1000)
 	case "ESPTemp":
-		ev.victron_ev.Temperature(i)
+		ev.victron_ev.SetTemperature(i)
 	}
 }
 
@@ -280,7 +280,7 @@ func (evse *SmartEVSE) modeChangedCallback(mode victron.EV_Mode) {
 		evse.mqtt.PublishFullTopic(topic, "Off")
 	case victron.EV_Mode_Scheduled:
 		evse.mqtt.PublishFullTopic(topic, "Solar")
-	case victron.EV_Mode_Automatic:
+	case victron.EV_Mode_Auto:
 		evse.mqtt.PublishFullTopic(topic, "Smart")
 	default:
 		log.Printf("Don't know what to do for mode:%d", mode)

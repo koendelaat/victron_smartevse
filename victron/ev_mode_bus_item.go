@@ -8,17 +8,25 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-type EV_Mode int
+type EV_Mode int32
 
 const (
 	EV_Mode_Manual    = EV_Mode(0)
-	EV_Mode_Automatic = EV_Mode(1)
+	EV_Mode_Auto      = EV_Mode(1)
 	EV_Mode_Scheduled = EV_Mode(2)
+
+	// EV_Mode_Automatic is an alias for EV_Mode_Auto kept for compatibility.
+	EV_Mode_Automatic = EV_Mode_Auto
 )
 
+// ev_mode maps the three valid modes. Note: dbus_modbustcp/attributes.csv only
+// lists 0=Manual and 1=Auto because its modbus register surface is limited, but
+// the live Venus OS driver (dbus-modbus-client/ev_charger.py) and the GX display
+// (gui-v2/src/enums.h, gui-v2/data/EvChargers.qml) all define SCHEDULED=2 as a
+// valid mode.
 var ev_mode = map[EV_Mode]string{
 	EV_Mode_Manual:    "Manual",
-	EV_Mode_Automatic: "Automatic",
+	EV_Mode_Auto:      "Auto",
 	EV_Mode_Scheduled: "Scheduled",
 }
 
@@ -35,7 +43,7 @@ func NewEvModeBusItem(mode EV_Mode) EvModeBusItem {
 }
 
 func (f *EvModeBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
-	log.Printf("%s Received %s - %v - %s", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value(), val.String())
+	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
 	value, err := variant_int_value(val)
 	if err != nil {
 		return -1, err
@@ -45,7 +53,7 @@ func (f *EvModeBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	if _, found := ev_mode[new_mode]; !found {
 		return -1, dbus.NewError(
 			"com.victronenergy.BusItem.Error",
-			[]any{fmt.Sprintf("Not a number %v", err)},
+			[]any{fmt.Sprintf("invalid /Mode value: %d (valid: 0=Manual 1=Auto 2=Scheduled)", value)},
 		)
 	}
 
@@ -57,7 +65,7 @@ func (f *EvModeBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 }
 
 func (f *EvModeBusItem) GetValue() (any, *dbus.Error) {
-	return f.mode, nil
+	return int32(f.mode), nil
 }
 
 func (f *EvModeBusItem) GetText() (string, *dbus.Error) {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"strconv"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -28,13 +27,10 @@ func NewUnitFormatterObject(value float64, unit string, presision int) UnitBusIt
 }
 
 func (f *UnitBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
-	log.Printf("%s Received %s - %v - %s", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value(), val.String())
-	value, err := strconv.ParseFloat(val.String(), 64)
+	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
+	value, err := variant_float_value(val)
 	if err != nil {
-		return -1, dbus.NewError(
-			"com.victronenergy.BusItem.Error",
-			[]any{fmt.Sprintf("Not a number %v", err)},
-		)
+		return -1, err
 	}
 
 	f.value = value

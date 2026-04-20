@@ -8,7 +8,7 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-type EV_Status int
+type EV_Status int32
 
 const (
 	EV_Status_Disconnected                = EV_Status(0)
@@ -78,7 +78,7 @@ func NewEvStatusBusItem(status EV_Status) EvStatusBusItem {
 }
 
 func (f *EvStatusBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
-	log.Printf("%s Received %s - %v - %s", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value(), val.String())
+	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
 	value, err := variant_int_value(val)
 	if err != nil {
 		return -1, err
@@ -97,7 +97,7 @@ func (f *EvStatusBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 }
 
 func (f *EvStatusBusItem) GetValue() (any, *dbus.Error) {
-	return f.status, nil
+	return int32(f.status), nil
 }
 
 func (f *EvStatusBusItem) GetText() (string, *dbus.Error) {

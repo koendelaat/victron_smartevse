@@ -30,14 +30,10 @@ func NewMinMaxUnitBusItem(value, min, max float64, unit string, presision int) M
 }
 
 func (f *MinMaxUnitBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
-	log.Printf("%s Received %s - %v - %s", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value(), val.String())
-	value, ok := val.Value().(float64)
-	if !ok {
-		log.Printf("%s Failed to parse %s - not a float64", f.getObjectPath(), val.String())
-		return -1, dbus.NewError(
-			"com.victronenergy.BusItem.Error",
-			[]any{fmt.Sprintf("Not a number %v", val.Value())},
-		)
+	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
+	value, err := variant_float_value(val)
+	if err != nil {
+		return -1, err
 	}
 
 	if value < f.min {
@@ -80,4 +76,10 @@ func (f *MinMaxUnitBusItem) GetText() (string, *dbus.Error) {
 
 func (f *MinMaxUnitBusItem) change(value float64) {
 	f.value = value
+}
+
+func (f *MinMaxUnitBusItem) setBounds(min, value, max float64) {
+	f.min = min
+	f.value = value
+	f.max = max
 }

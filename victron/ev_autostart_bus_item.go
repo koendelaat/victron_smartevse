@@ -8,7 +8,7 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-type EV_AutoStart int
+type EV_AutoStart int32
 
 const (
 	EV_AutoStart_Disabled = EV_AutoStart(0)
@@ -33,7 +33,7 @@ func NewEvAutoStartBusItem(autostart EV_AutoStart) EvAutoStartBusItem {
 }
 
 func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
-	log.Printf("%s Received %s - %v - %s", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value(), val.String())
+	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
 	value, err := variant_int_value(val)
 	if err != nil {
 		return -1, err
@@ -55,7 +55,7 @@ func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 }
 
 func (f *EvAutoStartBusItem) GetValue() (any, *dbus.Error) {
-	return f.autostart, nil
+	return int32(f.autostart), nil
 }
 
 func (f *EvAutoStartBusItem) GetText() (string, *dbus.Error) {

@@ -163,6 +163,11 @@ func (ev *SmartEVSE) loadInfo() error {
 		ev.autoIdtag = raw.Ocpp.AutoAuthIdtag
 		log.Printf("RFID tag configured: %s", ev.autoIdtag)
 	}
+
+	if raw.EvMeter != nil {
+		ev.total = raw.EvMeter.Total_Wh / 1000
+		ev.charged = raw.EvMeter.Charged_Wh / 1000
+	}
 	return nil
 }
 

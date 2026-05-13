@@ -332,14 +332,19 @@ func (evse *SmartEVSE) startStopChangedCallback(mode victron.EV_StartStop) {
 func (evse *SmartEVSE) autoStartChangedCallback(mode victron.EV_AutoStart) {
 	log.Printf("Request to change autostart to: %d", mode)
 	if evse.autoIdtag == "" {
-		log.Printf("No RFID configured, can't start/stop")
+		log.Printf("No RFID configured, can't auto start/stop")
 	}
 	settings, _ := web.settings(evse.IP)
 	if settings.Ocpp != nil {
-		if settings.Ocpp.AutoAuth == fmt.Sprintf("%d", mode) {
+		if settings.Ocpp.AutoAuth != mode.ToString() {
+			err := web.setOcppAutoStart(evse.IP, int32(mode))
+			if err != nil {
+				log.Printf("Failed to update auto start/stop")
+			} else {
+				log.Printf("Updated auto start/stop")
+			}
 		}
 	}
-
 }
 
 func (ev *EvHandler) WriteMainsmeter() {

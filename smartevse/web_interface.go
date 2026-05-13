@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
@@ -147,10 +146,10 @@ func (web *web_interface) settings(ev string) (Smartevse_raw, error) {
 	return result, err
 }
 
-func (web *web_interface) setOcpp(ev string, ocppSettings SmartevseOcpp) error {
+func (web *web_interface) setOcppAutoStart(ev string, autostart int32) error {
 	query := fmt.Sprintf(
-		"settings?ocpp_update=1&ocpp_auth_key=%s",
-		url.QueryEscape(ocppSettings.AuthKey),
+		"settings?ocpp_update=1&ocpp_auto_auth=%d",
+		autostart,
 	)
 
 	result := Smartevse_raw{}

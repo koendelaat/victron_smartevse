@@ -20,6 +20,13 @@ var ev_autostart = map[EV_AutoStart]string{
 	EV_AutoStart_Disabled: "Disabled",
 }
 
+func (a EV_AutoStart) ToString() string {
+	if v, found := ev_autostart[a]; found {
+		return v
+	}
+	return "Unknown"
+}
+
 type EvAutoStartBusItem struct {
 	bus_item_impl
 	autostart EV_AutoStart

@@ -26,18 +26,18 @@ func newMQTTToDBusTestEV(t *testing.T, configure ...func(*SmartEVSE)) (*SmartEVS
 	})
 
 	ev := &SmartEVSE{
-		Prefix:           "SmartEVSE",
-		IP:               "192.168.1.10",
-		SerialNr:         1001,
-		Version:          "v3.10.0",
-		current_min:      6,
-		current:          16,
-		current_max:      32,
-		mode:             "Smart",
-		strategyMode:     "Smart",
-		desiredMode:      victron.EV_Mode_Manual,
-		desiredModeKnown: true,
-		autoStart:        victron.EV_AutoStart_Enabled,
+		Prefix:             "SmartEVSE",
+		IP:                 "192.168.1.10",
+		SerialNr:           1001,
+		Version:            "v3.10.0",
+		current_min:        6,
+		current:            16,
+		current_max:        32,
+		mode:               "Smart",
+		activeStrategyMode: "Smart",
+		managedMode:        victron.EV_Mode_Manual,
+		managedModeKnown:   true,
+		autoStart:          victron.EV_AutoStart_Enabled,
 	}
 	for _, fn := range configure {
 		fn(ev)
@@ -97,8 +97,8 @@ func capturePublishedMessages(ev *SmartEVSE) *[]publishedMessage {
 func TestMQTTToDBusE2E_InitialSyncUsesConfiguredStrategyAndAutostart(t *testing.T) {
 	_, _, fakeConn := newMQTTToDBusTestEV(t, func(ev *SmartEVSE) {
 		ev.mode = "Solar"
-		ev.strategyMode = "Solar"
-		ev.desiredMode = victron.EV_Mode_Auto
+		ev.activeStrategyMode = "Solar"
+		ev.managedMode = victron.EV_Mode_Auto
 		ev.state = "Charging Stopped - No Power Available"
 		ev.evplugstate = "Connected"
 	})
@@ -123,18 +123,18 @@ func TestMQTTToDBusE2E_RegisterInVictronRestoresPersistentAutoStart(t *testing.T
 	})
 
 	ev := &SmartEVSE{
-		Prefix:           "SmartEVSE",
-		IP:               "192.168.1.10",
-		SerialNr:         1001,
-		Version:          "v3.10.0",
-		current_min:      6,
-		current:          16,
-		current_max:      32,
-		mode:             "Smart",
-		strategyMode:     "Smart",
-		desiredMode:      victron.EV_Mode_Manual,
-		desiredModeKnown: true,
-		autoStart:        victron.EV_AutoStart_Enabled,
+		Prefix:             "SmartEVSE",
+		IP:                 "192.168.1.10",
+		SerialNr:           1001,
+		Version:            "v3.10.0",
+		current_min:        6,
+		current:            16,
+		current_max:        32,
+		mode:               "Smart",
+		activeStrategyMode: "Smart",
+		managedMode:        victron.EV_Mode_Manual,
+		managedModeKnown:   true,
+		autoStart:          victron.EV_AutoStart_Enabled,
 	}
 	handler := &EvHandler{evs: []*SmartEVSE{ev}}
 	require.NoError(t, handler.RegisterInVictron(vh))
@@ -178,9 +178,9 @@ func TestMQTTToDBusE2E_ConnectionAndStateMapping(t *testing.T) {
 func TestMQTTToDBusE2E_UnpluggedOffModeDoesNotResetVictronAutoMode(t *testing.T) {
 	ev, _, fakeConn := newMQTTToDBusTestEV(t, func(ev *SmartEVSE) {
 		ev.mode = "Solar"
-		ev.strategyMode = "Solar"
-		ev.desiredMode = victron.EV_Mode_Auto
-		ev.desiredModeKnown = true
+		ev.activeStrategyMode = "Solar"
+		ev.managedMode = victron.EV_Mode_Auto
+		ev.managedModeKnown = true
 		ev.evplugstate = "Connected"
 		ev.state = "Connected to EV"
 	})
@@ -192,28 +192,28 @@ func TestMQTTToDBusE2E_UnpluggedOffModeDoesNotResetVictronAutoMode(t *testing.T)
 	assert.Equal(t, "Auto", requirePathText(t, "/Mode", fakeConn))
 	assert.Equal(t, int32(victron.EV_Status_Disconnected), requirePathValue[int32](t, "/Status", fakeConn))
 	assert.Equal(t, "Disconnected", requirePathText(t, "/Status", fakeConn))
-	assert.Equal(t, "Solar", ev.strategyMode)
+	assert.Equal(t, "Solar", ev.activeStrategyMode)
 	assert.Equal(t, "Off", ev.mode)
 }
 
 func TestMQTTToDBusE2E_ModeMappingFromHardware(t *testing.T) {
 	tests := []struct {
-		name         string
-		mqttMode     string
-		override     float64
-		expectedMode victron.EV_Mode
-		expectedText string
+		name                     string
+		mqttMode                 string
+		managedAutoControlActive bool
+		expectedMode             victron.EV_Mode
+		expectedText             string
 	}{
 		{name: "Smart to Manual", mqttMode: "Smart", expectedMode: victron.EV_Mode_Manual, expectedText: "Manual"},
 		{name: "Solar to Auto", mqttMode: "Solar", expectedMode: victron.EV_Mode_Auto, expectedText: "Auto"},
-		{name: "Smart with Override to Auto", mqttMode: "Smart", override: 8, expectedMode: victron.EV_Mode_Auto, expectedText: "Auto"},
+		{name: "Smart with Managed Auto Control to Auto", mqttMode: "Smart", managedAutoControlActive: true, expectedMode: victron.EV_Mode_Auto, expectedText: "Auto"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ev, _, fakeConn := newMQTTToDBusTestEV(t, func(ev *SmartEVSE) {
-				ev.desiredModeKnown = false
-				ev.overrideCurrent = tt.override
+				ev.managedModeKnown = false
+				ev.managedAutoControlActive = tt.managedAutoControlActive
 			})
 
 			ev.mqttReceived("SmartEVSE/EVPlugState", "Connected")
@@ -241,7 +241,7 @@ func TestMQTTToDBusE2E_StartStopUsesPauseMode(t *testing.T) {
 	assert.Equal(t, int32(victron.EV_StartStop_Start), requirePathValue[int32](t, "/StartStop", fakeConn))
 }
 
-func TestMQTTToDBusE2E_AutoModeSwitchesBetweenSolarAndSmartOnOverride(t *testing.T) {
+func TestMQTTToDBusE2E_AutoModeSwitchesBetweenSolarAndSmartOnManagedAutoControl(t *testing.T) {
 	ev, _, fakeConn := newMQTTToDBusTestEV(t)
 	messages := capturePublishedMessages(ev)
 
@@ -251,7 +251,7 @@ func TestMQTTToDBusE2E_AutoModeSwitchesBetweenSolarAndSmartOnOverride(t *testing
 	assert.Equal(t, int32(victron.EV_Mode_Auto), requirePathValue[int32](t, "/Mode", fakeConn))
 
 	ev.mqttReceived("SmartEVSE/Mode", "Solar")
-	ev.setOverrideCurrentChangedCallback(12, 6, 32)
+	ev.setManagedAutoControl(true, 12)
 	require.Len(t, *messages, 3)
 	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/CurrentOverride", payload: "120"}, (*messages)[1])
 	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/Mode", payload: "Smart"}, (*messages)[2])
@@ -260,10 +260,39 @@ func TestMQTTToDBusE2E_AutoModeSwitchesBetweenSolarAndSmartOnOverride(t *testing
 	assert.Equal(t, int32(victron.EV_Mode_Auto), requirePathValue[int32](t, "/Mode", fakeConn))
 	assert.Equal(t, "Auto", requirePathText(t, "/Mode", fakeConn))
 
-	ev.setOverrideCurrentChangedCallback(32, 6, 32)
+	ev.setManagedAutoControl(true, 32)
 	require.Len(t, *messages, 5)
-	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/CurrentOverride", payload: "0"}, (*messages)[3])
-	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/Mode", payload: "Solar"}, (*messages)[4])
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/CurrentOverride", payload: "320"}, (*messages)[3])
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/Mode", payload: "Smart"}, (*messages)[4])
+	assert.Equal(t, 32.0, ev.overrideCurrent)
+	assert.Equal(t, int32(victron.EV_Mode_Auto), requirePathValue[int32](t, "/Mode", fakeConn))
+	assert.Equal(t, "Auto", requirePathText(t, "/Mode", fakeConn))
+
+	ev.clearManagedAutoControl()
+	require.Len(t, *messages, 7)
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/CurrentOverride", payload: "0"}, (*messages)[5])
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/Mode", payload: "Solar"}, (*messages)[6])
+	assert.Equal(t, 0.0, ev.overrideCurrent)
+	assert.Equal(t, int32(victron.EV_Mode_Auto), requirePathValue[int32](t, "/Mode", fakeConn))
+	assert.Equal(t, "Auto", requirePathText(t, "/Mode", fakeConn))
+}
+
+func TestMQTTToDBusE2E_SetCurrentDoesNotActivateManagedAutoControl(t *testing.T) {
+	ev, _, fakeConn := newMQTTToDBusTestEV(t)
+	messages := capturePublishedMessages(ev)
+
+	require.NoError(t, ev.modeChangedCallback(victron.EV_Mode_Auto))
+	require.Len(t, *messages, 1)
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/Mode", payload: "Solar"}, (*messages)[0])
+
+	ev.setOverrideCurrentChangedCallback(12, 6, 32)
+
+	require.Len(t, *messages, 2)
+	assert.Equal(t, publishedMessage{topic: "SmartEVSE/Set/CurrentOverride", payload: "120"}, (*messages)[1])
+	assert.Equal(t, int32(victron.EV_Mode_Auto), requirePathValue[int32](t, "/Mode", fakeConn))
+	assert.Equal(t, "Auto", requirePathText(t, "/Mode", fakeConn))
+	assert.False(t, ev.managedAutoControlActive)
+	assert.Equal(t, 12.0, ev.overrideCurrent)
 }
 
 func TestMQTTToDBusE2E_AutoStartReconnectBehavior(t *testing.T) {
@@ -315,7 +344,7 @@ func TestMQTTToDBusE2E_AutoStartDisabledPausesWhenVehicleIsPluggedIn(t *testing.
 func TestMQTTToDBusE2E_AutoStartDisabledPausesWhenLegacyOffModeIsReportedOnPlugIn(t *testing.T) {
 	ev, _, fakeConn := newMQTTToDBusTestEV(t, func(ev *SmartEVSE) {
 		ev.mode = "Off"
-		ev.strategyMode = "Smart"
+		ev.activeStrategyMode = "Smart"
 	})
 	messages := capturePublishedMessages(ev)
 

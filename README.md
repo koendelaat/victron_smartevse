@@ -242,18 +242,18 @@ http://<smartevse-ip>/settings
 
 ### Mode / StartStop / AutoStart semantics
 
-This bridge intentionally separates **charging strategy** from **charge permission**:
+This bridge intentionally separates **managed mode** (Victron-facing intent) from **charging strategy** (SmartEVSE runtime behavior) and **charge permission**:
 
 - Victron `/Mode=Manual` → SmartEVSE `Smart`
 - Victron `/Mode=Auto` → SmartEVSE `Solar` by default
-- Victron `/Mode=Auto` + active `/SetCurrent` override → SmartEVSE `Smart`
+- Victron `/Mode=Auto` + active internal managed control → SmartEVSE `Smart`
 - Victron `/Mode=Scheduled` → rejected (SmartEVSE has no equivalent)
 - Victron `/StartStop=Stop` → SmartEVSE `Pause`
 - Victron `/StartStop=Start` → clears `Pause` and restores the current strategy
 - Victron `/AutoStart=Enabled` → when an EV reconnects, clear `Pause`
 - Victron `/AutoStart=Disabled` → keep `Pause` until `/StartStop=Start`
 
-This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when Victron actively controls charging current, the bridge keeps Victron in `Auto` while temporarily driving SmartEVSE in `Smart` mode.
+This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when an internal controller owned by this driver is active, the bridge keeps Victron in `Auto` while temporarily driving SmartEVSE in `Smart` mode. When that internal controller is inactive, `Auto` falls back to SmartEVSE `Solar`. Generic Victron `/SetCurrent` writes no longer decide whether `Auto` uses `Smart` or `Solar`.
 
 ---
 

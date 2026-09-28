@@ -43,11 +43,12 @@ type SmartEVSE struct {
 	charged     float64
 	total       float64
 
-	strategyMode     string
-	desiredMode      victron.EV_Mode
-	autoStart        victron.EV_AutoStart
-	overrideCurrent  float64
-	desiredModeKnown bool
+	activeStrategyMode       string
+	managedMode              victron.EV_Mode
+	autoStart                victron.EV_AutoStart
+	overrideCurrent          float64
+	managedModeKnown         bool
+	managedAutoControlActive bool
 
 	mode        string
 	evplugstate string
@@ -105,6 +106,24 @@ func dedupeBySerial(evs []*SmartEVSE) []*SmartEVSE {
 }
 
 func (handler *EvHandler) Close() error {
+	return nil
+}
+
+func (handler *EvHandler) findBySerial(serial int) (*SmartEVSE, error) {
+	for _, evse := range handler.evs {
+		if evse.SerialNr == serial {
+			return evse, nil
+		}
+	}
+	return nil, fmt.Errorf("smartevse with serial %d not found", serial)
+}
+
+func (handler *EvHandler) SetManagedAutoControl(serial int, active bool, overrideCurrent float64) error {
+	evse, err := handler.findBySerial(serial)
+	if err != nil {
+		return err
+	}
+	evse.setManagedAutoControl(active, overrideCurrent)
 	return nil
 }
 
@@ -174,18 +193,18 @@ func (ev *SmartEVSE) loadInfo() error {
 	ev.autoStart = victron.EV_AutoStart_Enabled
 	ev.mode = canonicalizeSmartEVSEMode(raw.Mode)
 	if isStrategyMode(ev.mode) {
-		ev.strategyMode = ev.mode
+		ev.activeStrategyMode = ev.mode
 	}
 	if raw.Evse != nil {
 		ev.state = raw.Evse.State
 		ev.access = rawAccessToString(raw.Evse.Access)
 	}
-	if ev.strategyMode == "" && ev.state != "" {
-		ev.strategyMode = inferStrategyModeFromState(ev.state)
+	if ev.activeStrategyMode == "" && ev.state != "" {
+		ev.activeStrategyMode = inferStrategyModeFromState(ev.state)
 	}
-	if ev.strategyMode != "" && !isPauseMode(ev.strategyMode) {
-		ev.desiredMode = ev.deriveVictronModeFromHardware()
-		ev.desiredModeKnown = true
+	if ev.activeStrategyMode != "" && !isPauseMode(ev.activeStrategyMode) {
+		ev.managedMode = ev.managedModeFromRuntime()
+		ev.managedModeKnown = true
 	}
 
 	if raw.EvMeter != nil {
@@ -270,40 +289,36 @@ func inferStrategyModeFromState(state string) string {
 	return ""
 }
 
-func deriveVictronModeFromStrategy(strategy string) victron.EV_Mode {
+func managedModeFromStrategy(strategy string) victron.EV_Mode {
 	if canonicalizeSmartEVSEMode(strategy) == "Solar" {
 		return victron.EV_Mode_Auto
 	}
 	return victron.EV_Mode_Manual
 }
 
-func (ev *SmartEVSE) deriveVictronModeFromHardware() victron.EV_Mode {
-	if ev.strategyMode == "Smart" && ev.currentOverrideActive() {
+func (ev *SmartEVSE) managedModeFromRuntime() victron.EV_Mode {
+	if ev.activeStrategyMode == "Smart" && ev.managedAutoControlActive {
 		return victron.EV_Mode_Auto
 	}
-	return deriveVictronModeFromStrategy(ev.strategyMode)
+	return managedModeFromStrategy(ev.activeStrategyMode)
 }
 
-func (ev *SmartEVSE) currentOverrideActive() bool {
-	return ev.overrideCurrent > 0
-}
-
-func (ev *SmartEVSE) displayedVictronMode() victron.EV_Mode {
-	if ev.desiredModeKnown {
-		return ev.desiredMode
+func (ev *SmartEVSE) effectiveManagedMode() victron.EV_Mode {
+	if ev.managedModeKnown {
+		return ev.managedMode
 	}
-	if ev.strategyMode != "" {
-		return deriveVictronModeFromStrategy(ev.strategyMode)
+	if ev.activeStrategyMode != "" {
+		return managedModeFromStrategy(ev.activeStrategyMode)
 	}
 	return victron.EV_Mode_Manual
 }
 
-func (ev *SmartEVSE) desiredRunningMode() string {
-	switch ev.displayedVictronMode() {
+func (ev *SmartEVSE) targetStrategyForManagedMode() string {
+	switch ev.effectiveManagedMode() {
 	case victron.EV_Mode_Manual:
 		return "Smart"
 	case victron.EV_Mode_Auto:
-		if ev.currentOverrideActive() {
+		if ev.managedAutoControlActive {
 			return "Smart"
 		}
 		return "Solar"
@@ -325,7 +340,7 @@ func (ev *SmartEVSE) deriveStatus() victron.EV_Status {
 	}
 
 	state := strings.ToLower(strings.TrimSpace(ev.state))
-	solarStrategy := ev.desiredRunningMode() == "Solar"
+	solarStrategy := ev.targetStrategyForManagedMode() == "Solar"
 
 	switch {
 	case strings.Contains(state, "waiting for rfid"):
@@ -357,7 +372,7 @@ func (ev *SmartEVSE) syncVictronState() {
 	if ev.victron_ev == nil {
 		return
 	}
-	ev.victron_ev.SetMode(ev.displayedVictronMode())
+	ev.victron_ev.SetMode(ev.effectiveManagedMode())
 	if ev.isPaused() {
 		ev.victron_ev.SetStartStop(victron.EV_StartStop_Stop)
 	} else {
@@ -381,7 +396,7 @@ func (ev *SmartEVSE) applyRunningModeLocally(mode string) {
 	mode = canonicalizeSmartEVSEMode(mode)
 	ev.mode = mode
 	if isStrategyMode(mode) {
-		ev.strategyMode = mode
+		ev.activeStrategyMode = mode
 	}
 }
 
@@ -396,9 +411,32 @@ func (ev *SmartEVSE) requestRunningMode(mode string) {
 	ev.syncVictronState()
 }
 
+func (ev *SmartEVSE) setManagedAutoControl(active bool, overrideCurrent float64) {
+	ev.managedAutoControlActive = active
+	if active {
+		ev.overrideCurrent = overrideCurrent
+	} else {
+		ev.overrideCurrent = 0
+	}
+
+	topic := fmt.Sprintf("%s/Set/CurrentOverride", ev.Prefix)
+	payload := fmt.Sprintf("%d", int32(math.RoundToEven(ev.overrideCurrent*10)))
+	ev.publishFullTopic(topic, payload)
+
+	if ev.effectiveManagedMode() == victron.EV_Mode_Auto && !ev.isPaused() {
+		ev.requestRunningMode(ev.targetStrategyForManagedMode())
+		return
+	}
+	ev.syncVictronState()
+}
+
+func (ev *SmartEVSE) clearManagedAutoControl() {
+	ev.setManagedAutoControl(false, 0)
+}
+
 func (ev *SmartEVSE) clearPauseOnReconnectIfNeeded(previousPlugState string) {
 	if previousPlugState == "Disconnected" && ev.evplugstate == "Connected" && ev.autoStart == victron.EV_AutoStart_Enabled && ev.isPaused() {
-		ev.requestRunningMode(ev.desiredRunningMode())
+		ev.requestRunningMode(ev.targetStrategyForManagedMode())
 	}
 }
 
@@ -441,9 +479,9 @@ func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 	case "Mode":
 		ev.applyRunningModeLocally(value)
 		if isStrategyMode(value) {
-			if !(ev.desiredModeKnown && ev.desiredRunningMode() == canonicalizeSmartEVSEMode(value)) {
-				ev.desiredMode = ev.deriveVictronModeFromHardware()
-				ev.desiredModeKnown = true
+			if !(ev.managedModeKnown && ev.targetStrategyForManagedMode() == canonicalizeSmartEVSEMode(value)) {
+				ev.managedMode = ev.managedModeFromRuntime()
+				ev.managedModeKnown = true
 			}
 		}
 		updateState = true
@@ -489,9 +527,6 @@ func (ev *SmartEVSE) mqttReceived(topic string, value string) {
 		ev.victron_ev.SetChargeCurrent(i / 10)
 	case "CurrentOverride":
 		ev.overrideCurrent = i / 10
-		if ev.displayedVictronMode() == victron.EV_Mode_Auto && !ev.isPaused() {
-			ev.requestRunningMode(ev.desiredRunningMode())
-		}
 	case "EVChargePower":
 		ev.victron_ev.SetAcPower(i)
 	case "EVEnergyCharged":
@@ -516,18 +551,18 @@ func (evse *SmartEVSE) modeChangedCallback(mode victron.EV_Mode) error {
 	log.Printf("Request to change mode to: %d", mode)
 	switch mode {
 	case victron.EV_Mode_Manual:
-		evse.desiredMode = mode
-		evse.desiredModeKnown = true
+		evse.managedMode = mode
+		evse.managedModeKnown = true
 		if !evse.isPaused() {
-			evse.requestRunningMode(evse.desiredRunningMode())
+			evse.requestRunningMode(evse.targetStrategyForManagedMode())
 		} else {
 			evse.syncVictronState()
 		}
 	case victron.EV_Mode_Auto:
-		evse.desiredMode = mode
-		evse.desiredModeKnown = true
+		evse.managedMode = mode
+		evse.managedModeKnown = true
 		if !evse.isPaused() {
-			evse.requestRunningMode(evse.desiredRunningMode())
+			evse.requestRunningMode(evse.targetStrategyForManagedMode())
 		} else {
 			evse.syncVictronState()
 		}
@@ -548,9 +583,6 @@ func (evse *SmartEVSE) setOverrideCurrentChangedCallback(value, _, max float64) 
 	topic := fmt.Sprintf("%s/Set/CurrentOverride", evse.Prefix)
 	payload := fmt.Sprintf("%d", int32(math.RoundToEven(value*10)))
 	evse.publishFullTopic(topic, payload)
-	if evse.displayedVictronMode() == victron.EV_Mode_Auto && !evse.isPaused() {
-		evse.requestRunningMode(evse.desiredRunningMode())
-	}
 }
 
 func (evse *SmartEVSE) startStopChangedCallback(mode victron.EV_StartStop) {
@@ -559,7 +591,7 @@ func (evse *SmartEVSE) startStopChangedCallback(mode victron.EV_StartStop) {
 		evse.requestRunningMode("Pause")
 		return
 	}
-	evse.requestRunningMode(evse.desiredRunningMode())
+	evse.requestRunningMode(evse.targetStrategyForManagedMode())
 }
 
 func (evse *SmartEVSE) autoStartChangedCallback(mode victron.EV_AutoStart) {

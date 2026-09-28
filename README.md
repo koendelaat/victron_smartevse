@@ -222,8 +222,9 @@ http://<smartevse-ip>/settings
 | Topic | Description |
 |------|------------|
 | State | Charger state |
-| Mode | Charging mode |
+| Mode | Strategy / pause state |
 | EVCurrentL1-3 | Current per phase |
+| CurrentOverride | External current control state |
 | EVChargePower | Power |
 | EVEnergyCharged | Session energy |
 | ESPTemp | Temperature |
@@ -236,7 +237,23 @@ http://<smartevse-ip>/settings
 |------|------------|
 | Set/MainsMeter | Grid current |
 | Set/HomeBatteryCurrent | Battery current |
-| Set/Mode | Charger mode |
+| Set/Mode | Strategy or `Pause` |
+| Set/CurrentOverride | External current override |
+
+### Mode / StartStop / AutoStart semantics
+
+This bridge intentionally separates **charging strategy** from **charge permission**:
+
+- Victron `/Mode=Manual` → SmartEVSE `Smart`
+- Victron `/Mode=Auto` → SmartEVSE `Solar` by default
+- Victron `/Mode=Auto` + active `/SetCurrent` override → SmartEVSE `Smart`
+- Victron `/Mode=Scheduled` → rejected (SmartEVSE has no equivalent)
+- Victron `/StartStop=Stop` → SmartEVSE `Pause`
+- Victron `/StartStop=Start` → clears `Pause` and restores the current strategy
+- Victron `/AutoStart=Enabled` → when an EV reconnects, clear `Pause`
+- Victron `/AutoStart=Disabled` → keep `Pause` until `/StartStop=Start`
+
+This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when Victron actively controls charging current, the bridge keeps Victron in `Auto` while temporarily driving SmartEVSE in `Smart` mode.
 
 ---
 
@@ -244,9 +261,11 @@ http://<smartevse-ip>/settings
 
 - Multiple SmartEVSE chargers supported (one D-Bus service per serial)
 - Device instance allocated via `com.victronenergy.settings` (`ClassAndVrmInstance`)
+- Victron `/AutoStart` and `/Position` are persisted per charger under `com.victronenergy.settings/Settings/Devices/<devicename>/...`
 - D-Bus sender hardcoded (`com.victronenergy.vebus.ttyS4`)
 - MQTT topic prefix taken from SmartEVSE config
-- Session time not implemented
+- `AutoStart` is bridge-local, persisted across restarts, and no longer mirrors OCPP `auto_auth`
+- `Scheduled` mode is intentionally rejected because SmartEVSE exposes only `Smart`, `Solar`, and `Pause`
 
 ---
 

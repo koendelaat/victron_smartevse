@@ -253,7 +253,7 @@ This bridge intentionally separates **managed mode** (Victron-facing intent) fro
 - Victron `/AutoStart=Enabled` → when an EV reconnects, clear `Pause`
 - Victron `/AutoStart=Disabled` → keep `Pause` until `/StartStop=Start`
 
-This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when an internal controller owned by this driver is active, the bridge keeps Victron in `Auto` while temporarily driving SmartEVSE in `Smart` mode. When that internal controller is inactive, `Auto` falls back to SmartEVSE `Solar`. Generic Victron `/SetCurrent` writes no longer decide whether `Auto` uses `Smart` or `Solar`.
+This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when an internal controller owned by this driver is active, the bridge keeps Victron in `Auto` while temporarily driving SmartEVSE in `Smart` mode. When that internal controller is inactive, `Auto` falls back to SmartEVSE `Solar`. 
 
 ---
 
@@ -264,7 +264,7 @@ This makes Victron `Auto` usable with Opportunity Loads / DynamicESS: when an in
 - Victron `/AutoStart` and `/Position` are persisted per charger under `com.victronenergy.settings/Settings/Devices/<devicename>/...`
 - D-Bus sender hardcoded (`com.victronenergy.vebus.ttyS4`)
 - MQTT topic prefix taken from SmartEVSE config
-- `AutoStart` is bridge-local, persisted across restarts, and no longer mirrors OCPP `auto_auth`
+- `AutoStart` is bridge-local, persisted across restarts
 - `Scheduled` mode is intentionally rejected because SmartEVSE exposes only `Smart`, `Solar`, and `Pause`
 
 ---

@@ -28,7 +28,7 @@ func (a EV_AutoStart) ToString() string {
 }
 
 type EvAutoStartBusItem struct {
-	bus_item_impl
+	busItemImpl
 	autostart EV_AutoStart
 	callback  func(mode EV_AutoStart)
 }
@@ -41,7 +41,7 @@ func NewEvAutoStartBusItem(autostart EV_AutoStart) EvAutoStartBusItem {
 
 func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	log.Printf("%s Received %s - %v", f.getObjectPath(), reflect.TypeOf(val.Value()), val.Value())
-	value, err := variant_int_value(val)
+	value, err := variantIntValue(val)
 	if err != nil {
 		return -1, err
 	}
@@ -50,7 +50,7 @@ func (f *EvAutoStartBusItem) SetValue(val dbus.Variant) (int, *dbus.Error) {
 	if _, found := ev_autostart[new_autostart]; !found {
 		return -1, dbus.NewError(
 			"com.victronenergy.BusItem.Error",
-			[]any{fmt.Sprintf("Not a number %v", err)},
+			[]any{fmt.Sprintf("invalid /AutoStart value: %d (valid: 0=Disabled 1=Enabled)", value)},
 		)
 	}
 
